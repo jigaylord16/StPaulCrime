@@ -1,0 +1,179 @@
+---
+title: "Saint Paul Crime Maps"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+setwd("~/Desktop/DataVisualization/FinalProject")
+library(flexdashboard)
+library(shiny)
+library(tidyverse)
+library(leaflet)
+library(rgdal)
+library(htmltools)
+library(lubridate)
+
+crime_data <- read.csv("crime_incident_report.csv")
+
+neighborhoods <- readOGR("st_paul_neighborhoods.shp")
+neighborhoods <- spTransform(neighborhoods,
+                       CRS("+proj=longlat +datum=WGS84 +no_defs"))
+
+crime_by_neighborhood <- crime_data %>%
+  filter(!(INCIDENT %in% c("Community Engagement Event", "Proactive Police Visit"))) %>%
+  group_by(district = NEIGHBORHOOD.NUMBER) %>%
+  summarise(count = n())
+
+violent_crime_by_neighborhood <- crime_data %>%
+  filter(INCIDENT %in% c("Simple Asasult Dom.", "Agg. Assault Dom.", "Agg. Assault", "Robbery", "Discharge", "Rape", "Arson")) %>%
+  group_by(district = NEIGHBORHOOD.NUMBER) %>%
+  summarise(crimes = n())
+
+police_grids <- readOGR("st_paul_police_grids.shp")
+police_grids <- spTransform(police_grids,
+                       CRS("+proj=longlat +datum=WGS84 +no_defs"))
+
+crime_by_police_grid <- crime_data %>%
+  filter(!(INCIDENT %in% c("Community Engagement Event", "Proactive Police Visit"))) %>%
+  group_by(gridnum = POLICE.GRID.NUMBER) %>%
+  summarise(count = n())
+
+violent_crime_by_police_grid <- crime_data %>%
+  filter(INCIDENT %in% c("Simple Asasult Dom.", "Agg. Assault Dom.", "Agg. Assault", "Robbery", "Burglary", "Discharge", "Theft", "Rape", "Arson", "Auto Theft")) %>%
+  group_by(gridnum = POLICE.GRID.NUMBER) %>%
+  summarise(crimes = n())
+```
+
+
+Row
+-----------------------------------------------------------------------
+
+### Number of crimes in each neighborhood
+
+```{r}
+  neighborhoods@data <- neighborhoods@data %>%
+  left_join(crime_by_neighborhood)
+
+pal <- colorNumeric(palette = "YlOrRd", domain = neighborhoods@data$count)
+
+labels <- sprintf("<strong>%s</strong><br/>%g Incidents", 
+                  neighborhoods@data$name2, neighborhoods@data$count) %>% 
+  lapply(htmltools::HTML)
+
+leaflet(neighborhoods) %>%
+  setView(-93.11, 44.94, zoom = 11) %>%
+  addProviderTiles(providers$CartoDB.DarkMatter, 
+                   options = providerTileOptions(minZoom = 11)) %>%
+  addPolygons(fillColor = ~pal(count),
+              weight = 1,
+              opacity = 1,
+              color = "white",
+              fillOpacity = 0.9,
+              label = labels,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px",
+                direction = "auto")) %>%
+  addLegend(pal = pal, values = ~count, opacity = 0.7, title = "All Crimes",
+    position = "bottomright")
+```
+
+### Number of violent crimes per neighborhood
+
+```{r}
+neighborhoods@data <- neighborhoods@data %>%
+  left_join(violent_crime_by_neighborhood)
+
+pal <- colorNumeric("YlOrRd", domain = neighborhoods@data$crimes)
+labels <- sprintf("<strong>%s</strong><br/>%g Incidents", 
+                  neighborhoods@data$name2, neighborhoods@data$crimes) %>% 
+  lapply(htmltools::HTML)
+
+leaflet(neighborhoods) %>%
+  setView(-93.11, 44.94, zoom = 11) %>%
+  addProviderTiles(providers$CartoDB.DarkMatter, 
+                   options = providerTileOptions(minZoom = 11)) %>%
+  addPolygons(fillColor = ~pal(crimes),
+              weight = 1,
+              opacity = 1,
+              color = "white",
+              fillOpacity = 0.9,
+              label = labels,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px",
+                direction = "auto")) %>%
+  addLegend(pal = pal, values = ~crimes, opacity = 0.7, title = "Violent Crimes",
+    position = "bottomright")
+```
+
+
+Row
+-----------------------------------------------------------------------
+
+### Number of crimes in each police grid
+
+```{r}
+police_grids@data$gridnum <- as.numeric(as.character(police_grids@data$gridnum))
+
+police_grids@data <- police_grids@data %>%
+  left_join(crime_by_police_grid)
+
+bins <- c(0, 50, 100, 250, 500, 1000, 2500, 5000, 6241)
+pal <- colorBin("YlOrRd", domain = police_grids@data$count, bins = bins)
+
+labels <- sprintf("<strong>%s</strong><br/>%g Incidents", 
+                  police_grids@data$gridnum, police_grids@data$count) %>% 
+  lapply(htmltools::HTML)
+
+leaflet(police_grids) %>%
+  setView(-93.11, 44.94, zoom = 11) %>%
+  addProviderTiles(providers$CartoDB.DarkMatter, 
+                   options = providerTileOptions(minZoom = 11)) %>%
+  addPolygons(fillColor = ~pal(count),
+              weight = 1,
+              opacity = 1,
+              color = "white",
+              fillOpacity = 0.9,
+              label = labels,
+              labelOptions = labelOptions(style = list("font-weight" = "normal", padding = "3px 8px"),
+                                          textsize = "15px",
+                                          direction = "auto")) %>%
+  addLegend(pal = pal, values = ~count, opacity = 0.7, title = "All Crimes",
+    position = "bottomright")
+```
+
+### Number of violent crimes in each police grid
+
+```{r}
+police_grids@data <- police_grids@data %>%
+  left_join(violent_crime_by_police_grid)
+
+bins <- c(0, 50, 100, 250, 500, 1000, 2500, 5000, 6012)
+pal <- colorBin("YlOrRd", domain = police_grids@data$crimes, bins = bins)
+
+
+labels <- sprintf("<strong>%s</strong><br/>%g Incidents", 
+                  police_grids@data$gridnum, police_grids@data$crimes) %>% 
+  lapply(htmltools::HTML)
+
+leaflet(police_grids) %>%
+  setView(-93.11, 44.94, zoom = 11) %>%
+  addProviderTiles(providers$CartoDB.DarkMatter, 
+                   options = providerTileOptions(minZoom = 11)) %>%
+  addPolygons(fillColor = ~pal(crimes),
+              weight = 1,
+              opacity = 1,
+              color = "white",
+              fillOpacity = 0.9,
+              label = labels,
+              labelOptions = labelOptions(style = list("font-weight" = "normal", padding = "3px 8px"),
+                                          textsize = "15px",
+                                          direction = "auto")) %>%
+  addLegend(pal = pal, values = ~crimes, opacity = 0.7, title = " Violent Crimes",
+    position = "bottomright")
+```
+
